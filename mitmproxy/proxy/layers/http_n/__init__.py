@@ -11,12 +11,10 @@ import wsproto.handshake
 from ...context import Context
 from ...mode_specs import ReverseMode
 from ...mode_specs import UpstreamMode
-from ..quic import QuicStreamEvent
 from ._base import HttpCommand
 from ._base import HttpConnection
 from ._base import ReceiveHttp
 from ._base import StreamId
-from ._events import ErrorCode
 from ._events import HttpEvent
 from ._events import RequestData
 from ._events import RequestEndOfMessage
@@ -39,16 +37,13 @@ from ._hooks import HttpResponseHook
 from ._http1 import Http1Client
 from ._http1 import Http1Connection
 from ._http1 import Http1Server
-from ._http2 import Http2Client
-from ._http2 import Http2Server
-from ._http3 import Http3Client
-from ._http3 import Http3Server
 from mitmproxy import flow
 from mitmproxy import http
 from mitmproxy.connection import Connection
 from mitmproxy.connection import Server
 from mitmproxy.connection import TransportProtocol
 from mitmproxy.net import server_spec
+from mitmproxy.net.http import status_codes
 from mitmproxy.net.http import url
 from mitmproxy.net.http.http1 import expected_http_body_size
 from mitmproxy.net.http.validate import validate_headers
@@ -56,15 +51,12 @@ from mitmproxy.proxy import commands
 from mitmproxy.proxy import events
 from mitmproxy.proxy import layer
 from mitmproxy.proxy import tunnel
-from mitmproxy.proxy.layers import quic
 from mitmproxy.proxy.layers import tcp
 from mitmproxy.proxy.layers import tls
-# from mitmproxy.proxy.layers import websocket
 from mitmproxy.proxy.layers.http import _upstream_proxy
 from mitmproxy.proxy.utils import expect
 from mitmproxy.proxy.utils import ReceiveBuffer
 from mitmproxy.utils import human
-# from mitmproxy.websocket import WebSocketData
 
 
 class HTTPMode(enum.Enum):
@@ -238,7 +230,7 @@ class HttpStream(layer.Layer):
                     ResponseProtocolError(
                         self.stream_id,
                         "HTTP request has no host header, destination unknown.",
-                        ErrorCode.DESTINATION_UNKNOWN,
+                        400,
                     ),
                     self.context.client,
                 )
@@ -482,18 +474,6 @@ class HttpStream(layer.Layer):
         assert self.flow.response
         self.flow.response.timestamp_end = time.time()
 
-        # is_websocket = (
-        #     self.flow.response.status_code == 101
-        #     and self.flow.response.headers.get("upgrade", "").lower() == "websocket"
-        #     and self.flow.request.headers.get("Sec-WebSocket-Version", "").encode()
-        #     == wsproto.handshake.WEBSOCKET_VERSION
-        #     and self.context.options.websocket
-        # )
-        # if is_websocket:
-        #     # We need to set this before calling the response hook
-        #     # so that addons can determine if a WebSocket connection is following up.
-        #     self.flow.websocket = WebSocketData()
-
         yield HttpResponseHook(self.flow)
         self.server_state = self.state_done
         if (yield from self.check_killed(False)):
@@ -521,15 +501,11 @@ class HttpStream(layer.Layer):
             yield from self.flow_done()
 
     def flow_done(self) -> layer.CommandGenerator[None]:
-        # if not self.flow.websocket:
-        #     self.flow.live = False
+
         self.flow.live = False
 
         assert self.flow.response
         if self.flow.response.status_code == 101:
-            # if self.flow.websocket:
-            #     self.child_layer = websocket.WebsocketLayer(self.context, self.flow)
-            # elif self.context.options.rawtcp:
             if self.context.options.rawtcp:
                 self.child_layer = tcp.TCPLayer(self.context)
             else:
@@ -596,9 +572,7 @@ class HttpStream(layer.Layer):
                 yield HttpResponseHeadersHook(self.flow)
 
             err_msg = f"{'Request' if request else 'Response'} body exceeds mitmproxy's body_size_limit."
-            err_code = (
-                ErrorCode.REQUEST_TOO_LARGE if request else ErrorCode.RESPONSE_TOO_LARGE
-            )
+            err_code = 413 if request else 502
 
             self.flow.error = flow.Error(err_msg)
             yield HttpErrorHook(self.flow)
@@ -669,9 +643,7 @@ class HttpStream(layer.Layer):
                 ResponseProtocolError(
                     self.stream_id,
                     err,
-                    ErrorCode.REQUEST_VALIDATION_FAILED
-                    if request
-                    else ErrorCode.RESPONSE_VALIDATION_FAILED,
+                    status_codes.BAD_REQUEST if request else status_codes.BAD_GATEWAY,
                 ),
                 self.context.client,
             )
@@ -699,8 +671,11 @@ class HttpStream(layer.Layer):
         if killed_by_us or killed_by_remote:
             if emit_error_hook:
                 yield HttpErrorHook(self.flow)
+            # Use the special NO_RESPONSE status code to make sure that no error message is sent to the client.
             yield SendHttp(
-                ResponseProtocolError(self.stream_id, "killed", ErrorCode.KILL),
+                ResponseProtocolError(
+                    self.stream_id, "killed", status_codes.NO_RESPONSE
+                ),
                 self.context.client,
             )
             self.flow.live = False
@@ -751,7 +726,7 @@ class HttpStream(layer.Layer):
         )
         if err:
             yield from self.handle_protocol_error(
-                ResponseProtocolError(self.stream_id, err, ErrorCode.CONNECT_FAILED)
+                ResponseProtocolError(self.stream_id, err)
             )
             return False
         else:
@@ -867,9 +842,7 @@ class HttpStream(layer.Layer):
             elif isinstance(command, commands.CloseConnection):
                 if command.connection == self.context.client:
                     yield SendHttp(
-                        ResponseProtocolError(
-                            self.stream_id, "EOF", ErrorCode.PASSTHROUGH_CLOSE
-                        ),
+                        ResponseProtocolError(self.stream_id, "EOF"),
                         self.context.client,
                     )
                 elif (
@@ -877,10 +850,7 @@ class HttpStream(layer.Layer):
                     and self.flow.response.status_code == 101
                 ):
                     yield SendHttp(
-                        RequestProtocolError(
-                            self.stream_id, "EOF", ErrorCode.PASSTHROUGH_CLOSE
-                        ),
-                        self.context.server,
+                        RequestProtocolError(self.stream_id, "EOF"), self.context.server
                     )
                 else:
                     # If we are running TCP over HTTP we want to be consistent with half-closes.

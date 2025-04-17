@@ -41,6 +41,7 @@ from mitmproxy.proxy.layers.http import HTTPMode
 from mitmproxy.utils import asyncio_utils
 from mitmproxy.utils import human
 from mitmproxy.utils.data import pkg_data
+from pipe.pipe import PipeWriter
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,9 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
         self.transports = {}
         self.max_conns = collections.defaultdict(lambda: asyncio.Semaphore(5))
         self.wakeup_timer = set()
-
+        self.pipe = PipeWriter(context.options.pipe_path)
+        self.pipe.write("client", context.client.peername)
+        
         # Ask for the first layer right away.
         # In a reverse proxy scenario, this is necessary as we would otherwise hang
         # on protocols that start with a server greeting.

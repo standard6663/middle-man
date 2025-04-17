@@ -38,3 +38,6 @@ web/coverage/
 # compile
 *.dist
 *.build
+
+certs
+.midman*

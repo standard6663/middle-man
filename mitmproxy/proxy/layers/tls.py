@@ -27,6 +27,8 @@ from mitmproxy.tls import ClientHelloData
 from mitmproxy.tls import TlsData
 from mitmproxy.utils import human
 
+from midman.pipe import PipeWriter
+import base64
 
 def handshake_record_contents(data: bytes) -> Iterator[bytes]:
     """
@@ -183,6 +185,7 @@ class TLSLayer(tunnel.TunnelLayer):
         )
 
         conn.tls = True
+        self.pipe = PipeWriter(context.options.pipe_path)
 
     def __repr__(self):
         return (
@@ -366,6 +369,13 @@ class TLSLayer(tunnel.TunnelLayer):
         yield from self.tls_interact()
 
         if plaintext:
+            # recv raw data here
+            self.pipe.write(f"plaintext", 
+                            {"ts": time.time(), 
+                             "peername": self.conn.peername, 
+                             "sockname": self.conn.sockname,
+                             "direction": "recv",
+                             "payload": base64.b64encode(plaintext).decode()})
             yield from self.event_to_child(
                 events.DataReceived(self.conn, bytes(plaintext))
             )
@@ -383,6 +393,7 @@ class TLSLayer(tunnel.TunnelLayer):
 
     def send_data(self, data: bytes) -> layer.CommandGenerator[None]:
         try:
+            # send raw data here
             self.tls.sendall(data)
         except (SSL.ZeroReturnError, SSL.SysCallError):
             # The other peer may still be trying to send data over, which we discard here.

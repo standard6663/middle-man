@@ -28,6 +28,7 @@ from mitmproxy import options as moptions
 from mitmproxy import tls
 from mitmproxy.connection import Address
 from mitmproxy.connection import Client
+from mitmproxy.connection import Server
 from mitmproxy.connection import Connection
 from mitmproxy.connection import ConnectionState
 from mitmproxy.proxy import commands
@@ -41,7 +42,10 @@ from mitmproxy.proxy.layers.http import HTTPMode
 from mitmproxy.utils import asyncio_utils
 from mitmproxy.utils import human
 from mitmproxy.utils.data import pkg_data
-from pipe.pipe import PipeWriter
+
+import base64
+from midman.pipe import PipeWriter
+from scapy.layers.tls.all import TLS
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +99,15 @@ class ConnectionIO:
     reader: asyncio.StreamReader | mitmproxy_rs.Stream | None = None
     writer: asyncio.StreamWriter | mitmproxy_rs.Stream | None = None
 
+@dataclass
+class ConnectionCounter:
+    recv_cnt: int = 0
+    send_cnt: int = 0
 
 class ConnectionHandler(metaclass=abc.ABCMeta):
     transports: MutableMapping[Connection, ConnectionIO]
+    counters: MutableMapping[Connection, ConnectionCounter]
+    
     timeout_watchdog: TimeoutWatchdog
     client: Client
     max_conns: collections.defaultdict[Address, asyncio.Semaphore]
@@ -110,7 +120,11 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
         self.max_conns = collections.defaultdict(lambda: asyncio.Semaphore(5))
         self.wakeup_timer = set()
         self.pipe = PipeWriter(context.options.pipe_path)
-        self.pipe.write("client", context.client.peername)
+        # self.pipe.write("client", context.client.peername)
+        self.counters = {}
+        # self.cnt = 0
+        # self.recv_cnt = 0
+        # self.send_cnt = 0
         
         # Ask for the first layer right away.
         # In a reverse proxy scenario, this is necessary as we would otherwise hang
@@ -242,6 +256,10 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
                     reader=reader,
                     writer=writer,
                 )
+                # self.pipe.write("conninfo", {
+                #     "server": command.connection.peername,
+                #     "client": self.client.peername
+                # })
 
                 assert command.connection.peername
                 if command.connection.address[0] != command.connection.peername[0]:
@@ -288,6 +306,22 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
                 cancelled = e
                 break
 
+            # self.recv_cnt += 1
+            # self.counters[connection].recv_cnt += 1
+            # bsdata = base64.b64encode(data).decode('utf-8')
+            # peer = f"{connection.peername[0]}_{connection.peername[1]}"
+            # sock = f"{connection.sockname[0]}_{connection.sockname[1]}"
+            # self.pipe.write(f"{peer} -- {sock}", 
+            #                 {"recv": self.counters[connection].recv_cnt,
+            #                  "ts": time.time()})
+            # if data[0] == 0x17:
+            self.pipe.write("ciphertext", 
+                            {"ts": time.time(), 
+                            "payload": base64.b64encode(data).decode(),
+                            "role": "server" if isinstance(connection, Server) else "client",
+                            "peername": connection.peername, 
+                            "sockname": connection.sockname,
+                            "direction": "recv"})
             await self.server_event(events.DataReceived(connection, data))
 
             try:
@@ -396,6 +430,7 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
                         self.transports[command.connection] = ConnectionIO(
                             handler=handler
                         )
+                        # self.counters[command.connection] = ConnectionCounter()
                     elif isinstance(command, commands.RequestWakeup):
                         task = asyncio_utils.create_task(
                             self.wakeup(command),
@@ -415,6 +450,19 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
                         assert writer
                         if not writer.is_closing():
                             writer.write(command.data)
+                            # connection = command.connection
+                            # self.counters[connection].send_cnt += 1
+                            # bsdata = base64.b64encode(command.data).decode('utf-8')
+                            # peer = f"{connection.peername[0]}_{connection.peername[1]}"
+                            # sock = f"{connection.sockname[0]}_{connection.sockname[1]}"
+                            # if command.data[0] == 0x17:
+                            self.pipe.write("ciphertext", 
+                                            {"ts": time.time(), 
+                                            "payload": base64.b64encode(command.data).decode(),
+                                            "role": "server" if isinstance(command.connection, Server) else "client",
+                                            "peername": command.connection.peername, 
+                                            "sockname": command.connection.sockname,
+                                            "direction": "send"})
                     elif isinstance(command, commands.CloseTcpConnection):
                         self.close_connection(command.connection, command.half_close)
                     elif isinstance(command, commands.CloseConnection):
@@ -480,6 +528,7 @@ class LiveConnectionHandler(ConnectionHandler, metaclass=abc.ABCMeta):
         self.transports[client] = ConnectionIO(
             handler=None, reader=reader, writer=writer
         )
+        # self.counters[client] = ConnectionCounter()
 
 
 class SimpleConnectionHandler(LiveConnectionHandler):  # pragma: no cover

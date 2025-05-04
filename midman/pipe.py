@@ -2,6 +2,7 @@ import os
 import stat
 import json
 import time
+import base64
 
 
 class PipeWriter:
@@ -15,6 +16,12 @@ class PipeWriter:
         """
         写入数据到命名管道，若读取端未就绪则阻塞
         """
+        if isinstance(data, bytes):
+            try:
+                data = data.decode('utf-8')
+            except UnicodeDecodeError:
+                data = base64.b64encode(data).decode('utf-8')
+        # print(f"[TODO] 写入: {name} - {data}")
         data_json = json.dumps({'name': name, 'data': data})
         self.pipe.write(f"{data_json}\n")
         self.pipe.flush()

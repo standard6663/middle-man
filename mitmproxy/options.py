@@ -7,7 +7,7 @@ CONF_DIR = "~/.midman"
 CONF_BASENAME = "midman"
 CONTENT_VIEW_LINES_CUTOFF = 512
 KEY_SIZE = 2048
-PIPE_PATH = "/tmp/midman-pipe"
+PIPE_PATH = "/tmp/.midman.pipe"
 
 class Options(optmanager.OptManager):
     def __init__(self, **kwargs) -> None:

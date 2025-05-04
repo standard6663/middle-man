@@ -3,11 +3,11 @@ from typing import Optional
 
 from mitmproxy import optmanager
 
-CONF_DIR = "~/.mitmproxy"
-CONF_BASENAME = "mitmproxy"
+CONF_DIR = "~/.midman"
+CONF_BASENAME = "midman"
 CONTENT_VIEW_LINES_CUTOFF = 512
 KEY_SIZE = 2048
-
+PIPE_PATH = "/tmp/.midman.pipe"
 
 class Options(optmanager.OptManager):
     def __init__(self, **kwargs) -> None:
@@ -230,6 +230,14 @@ class Options(optmanager.OptManager):
             """
             TLS key size for certificates and CA.
             """,
+        )
+        self.add_option(
+            "pipe_path",
+            str,
+            PIPE_PATH,
+            """
+            Pipe path for data report.
+            """
         )
 
         self.update(**kwargs)

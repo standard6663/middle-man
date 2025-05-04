@@ -34,3 +34,10 @@ sslkeylogfile.log
 coverage.xml
 web/coverage/
 .mypy_cache/
+
+# compile
+*.dist
+*.build
+
+certs
+.midman*

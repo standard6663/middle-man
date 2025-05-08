@@ -4,7 +4,7 @@ import subprocess
 import threading
 from midman.context import Context
 from cmdman.cmdman import Command, CommandManager, CommandPacket
-from cmdman.cmdpkt import DateType, UpdateData
+from cmdman.cmdpkt import DateType, UpdateData,Errordata
 
 PYTHON = '/middleman-venv/bin/python'
 
@@ -48,7 +48,7 @@ class Manager:
 
     def __send_error_message(self, error_code: int, error_message: str):
         error_data = json.dumps({'code': error_code, 'message': error_message}).encode('utf-8')
-        self.cmdman.send(CommandPacket(Command.ERROR, error_data))
+        self.cmdman.send(CommandPacket(Command.ERROR, Errordata(error_data)))
 
     def __check_runing_param(self) -> bool:
         success = True

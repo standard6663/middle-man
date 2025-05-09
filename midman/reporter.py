@@ -202,7 +202,8 @@ class Reporter:
         self.pipe = PipeReader(ctx.PIPE_PATH)
         self.db: TrafficDatabase = None
         self.db_lock = threading.Lock()
-        self.update_db()
+        if self.db != None:
+            self.update_db()
 
         self.sessions: list[Session] = []
 

@@ -202,9 +202,6 @@ class Reporter:
         self.pipe = PipeReader(ctx.PIPE_PATH)
         self.db: TrafficDatabase = None
         self.db_lock = threading.Lock()
-        if self.db != None:
-            self.update_db()
-
         self.sessions: list[Session] = []
 
     def __listen_worker(self):

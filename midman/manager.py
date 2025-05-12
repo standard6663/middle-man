@@ -5,8 +5,9 @@ import threading
 from midman.context import Context
 from cmdman.cmdman import Command, CommandManager, CommandPacket
 from cmdman.cmdpkt import DateType, UpdateData,ErrorData
-
-PYTHON = '/middleman-venv/bin/python'
+import sys
+PYTHON = sys.executable
+# PYTHON = '/middleman-venv/bin/python'
 
 
 class Manager:
@@ -85,7 +86,8 @@ class Manager:
 
     def cmd_start_handle(self, _):
         if self.__check_runing_param():
-            self.__run_midman()
+            #self.__run_midman()
+            pass
         else:
             print("[WARN] 中间人启动参数不完整")
 

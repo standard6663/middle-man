@@ -38,6 +38,15 @@ class TrafficDatabase:
             ))
             self.connection.commit()
 
+    def insert_certificate(self, certificate:str):
+        with self.connection.cursor() as cursor:
+            sql = """
+                INSERT INTO certificate (certificate)
+                VALUES (%s)
+            """
+            cursor.execute(sql, (certificate,))
+            self.connection.commit()
+
     def close(self):
         self.connection.close()
 

@@ -202,9 +202,6 @@ class Reporter:
         self.pipe = PipeReader(ctx.PIPE_PATH)
         self.db: TrafficDatabase = None
         self.db_lock = threading.Lock()
-        if self.db != None:
-            self.update_db()
-
         self.sessions: list[Session] = []
 
     def __listen_worker(self):
@@ -217,6 +214,7 @@ class Reporter:
             "plaintext": self.plaintext_handle,
             "request": self.request_handle,
             "response": self.response_handle,
+            "cert": self.cert_handle,
             "debug": lambda data: print(f"[DEBUG] {data}"),
         }
 
@@ -311,7 +309,19 @@ class Reporter:
             print(f"[ERROR] 数据库操作失败: {e}")
         finally:
             self.db_lock.release()
-            
+
+    def report_cert(self, cert: str):
+        """
+        上报证书
+        :param cert: 证书对象
+        """
+        self.db_lock.acquire()
+        try:
+            self.db.insert_certificate(certificate=cert)
+        except Exception as e:
+            print(f"[ERROR] 数据库操作失败: {e}")
+        finally:
+            self.db_lock.release()
 
     def session_handle(self, data):
         status = data["status"]
@@ -366,3 +376,6 @@ class Reporter:
         if session is None:
             raise ValueError(f"未找到会话: {(data["peername"], data["sockname"])}")
         session.set_conn_cipher(conn, data)
+
+    def cert_handle(self, data):
+        self.report_cert(data["cert"])

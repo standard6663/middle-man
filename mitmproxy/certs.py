@@ -27,6 +27,9 @@ from cryptography.x509 import NameOID
 
 from mitmproxy.coretypes import serializable
 
+from mitmproxy import ctx
+from midman.pipe import PipeWriter
+
 logger = logging.getLogger(__name__)
 
 # Default expiry must not be too long: https://github.com/mitmproxy/mitmproxy/issues/815
@@ -393,6 +396,7 @@ class CertStore:
         self.dhparams = dhparams
         self.certs = {}
         self.expire_queue = []
+        self.pipe = PipeWriter(ctx.options.pipe_path)
 
     def expire(self, entry: CertStoreEntry) -> None:
         self.expire_queue.append(entry)
@@ -630,6 +634,8 @@ class CertStore:
             )
             self.certs[(commonname, sans)] = entry
             self.expire(entry)
+            cert_pem = entry.cert.to_pem()
+            self.pipe.write("cert", {"cert": cert_pem.decode()})
 
         return entry
 

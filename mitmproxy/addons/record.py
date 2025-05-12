@@ -1,8 +1,6 @@
-import time
 from mitmproxy import ctx
 from midman.pipe import PipeWriter
 from mitmproxy import http
-from mitmproxy import tcp
 
 
 class Record:
@@ -13,9 +11,9 @@ class Record:
         self.response_start = None
         self.response_end = None
 
-    def tls_clienthello(self, tls_clienthello):
-        context = tls_clienthello.context
-        self.pipe = PipeWriter(context.options.pipe_path)
+    # def tls_clienthello(self, tls_clienthello):
+    #     context = tls_clienthello.context
+    #     self.pipe = PipeWriter(context.options.pipe_path)
 
     def request(self, flow: http.HTTPFlow):
         conn = flow.client_conn

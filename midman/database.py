@@ -2,7 +2,7 @@ import pymysql
 
 
 class TrafficDatabase:
-    def __init__(self, host:str, port:int, user:str, password:str, database='traffic_information_db'):
+    def __init__(self, host:str, port:int, user:str, password:str, database='traffic_data'):
         self.connection = pymysql.connect(
             host=host,
             user=user,
@@ -37,7 +37,7 @@ class TrafficDatabase:
                                cipher_suite, payload, protocol_version, packet_size, delay):
         with self.connection.cursor() as cursor:
             sql = """
-                INSERT INTO packet (
+                INSERT INTO packetsession (
                     sessionid, source_ip, source_port, destination_ip, destination_port,
                     cipher_suite, payload, protocol_version, packet_size, delay
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -63,7 +63,7 @@ class TrafficDatabase:
 
 
 class TrafficDatabaseDebug:
-    def __init__(self, host:str, port:int, user:str, password:str, database='traffic_information_db'):
+    def __init__(self, host:str, port:int, user:str, password:str, database='traffic_data'):
         print(f"连接到数据库: {host}:{port}, 用户: {user}, 数据库: {database}")
         self.session_cnt = 0
 
@@ -89,7 +89,7 @@ class TrafficDatabaseDebug:
     def insert_packet_session(self, sessionid, source_ip, source_port, destination_ip, destination_port,
                                  cipher_suite, payload, protocol_version, packet_size, delay):
         sql = """
-            INSERT INTO packet (
+            INSERT INTO packetsession (
                 sessionid, source_ip, source_port, destination_ip, destination_port,
                 cipher_suite, payload, protocol_version, packet_size, delay
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)

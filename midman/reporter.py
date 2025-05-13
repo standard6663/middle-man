@@ -45,6 +45,8 @@ class Connection:
         self.protocol_version: str = None
         self.alpn: str = None
 
+        self.alias: list['Connection'] = []
+
     @classmethod
     def from_tuple(cls, peername: tuple, sockname: tuple):
         conn = cls()
@@ -54,7 +56,15 @@ class Connection:
 
     def __eq__(self, value: Connection):
         if isinstance(value, Connection):
-            return self.peername == value.peername and self.sockname == value.sockname
+            if self.peername == value.peername and self.sockname == value.sockname:
+                return True
+            else:
+                for alias in self.alias:
+                    if alias == value:
+                        return True
+                for alias in value.alias:
+                    if alias == self:
+                        return True
         return False
 
     def __ne__(self, value):
@@ -87,7 +97,7 @@ class Connection:
 class Session:
     def __init__(self, report_cb=None):
         self.report_cb = report_cb
-        self.interanl: Connection = None
+        self.internal: Connection = None
         self.external: Connection = None
         self.external_sni: str = None
         self.ts_start: float = None
@@ -100,13 +110,13 @@ class Session:
 
     def __contains__(self, item: Connection | Address | tuple | list):
         if isinstance(item, Connection):
-            return self.interanl == item or self.external == item
+            return self.internal == item or self.external == item
         else:
-            return item in self.interanl or (self.external and item in self.external)
+            return item in self.internal or (self.external and item in self.external)
 
     def __eq__(self, value):
         if isinstance(value, Session):
-            return self.interanl == value.interanl and self.external == value.external
+            return self.internal == value.internal and self.external == value.external
         return False
 
     def find_connection(self, item: Address | tuple | list) -> Connection | None:
@@ -115,24 +125,22 @@ class Session:
         :param item: 地址或连接对象
         :return: 连接对象或 None
         """
-        if item in self.interanl:
-            return self.interanl
+        if item in self.internal:
+            return self.internal
         elif item in self.external:
             return self.external
         return None
 
     def check_packet(self, to_conn: Connection):
-        if not (self.interanl and self.external):
+        if not (self.internal and self.external):
             return
 
-        if to_conn == self.interanl:
+        if to_conn == self.internal:
             conn = self.external
-            to_conn = self.interanl
-            # pkts_list = self.ex2in_pkts
+            to_conn = self.internal
         elif to_conn == self.external:
-            conn = self.interanl
+            conn = self.internal
             to_conn = self.external
-            # pkts_list = self.in2ex_pkts
         else:
             raise ValueError(f"未知连接: {conn}")
 
@@ -183,11 +191,12 @@ class Session:
         conn.plain_data = plain_left
 
     def set_conn_cipher(self, conn: Connection, data: dict):
-        if conn == self.interanl:
-            conn = self.interanl
+        if conn == self.internal:
+            conn = self.internal
         elif conn == self.external:
             conn = self.external
         else:
+            "" if conn == self.external else ""
             raise ValueError(f"未知连接: {conn}")
 
         conn.cipher_suite = data.get("cipher_suite")
@@ -221,7 +230,18 @@ class Reporter:
         for data in self.pipe.read_data():
             handle_func = handlers.get(data["name"])
             if handle_func:
-                handle_func(data['data'])
+                try:
+                    handle_func(data['data'])
+                except Exception as e:
+                    if data["name"] == "ciphertext":
+                        retry_times = data['data'].get("retry_times", 0)
+                        if retry_times < 20:
+                            data['data']['retry_times'] = retry_times + 1
+                            self.pipe.retry_data(data)
+                        else:
+                            print(f"[ERROR] {e}, 重试次数超过限制: {retry_times + 1}")
+                    else:
+                        print(f"[ERROR] {e}")
             else:
                 raise ValueError(f"未知数据类型: {data['name']}")
 
@@ -250,7 +270,7 @@ class Reporter:
             self.db_lock.release()
         return True
 
-    def find_session(self, item: Address | tuple) -> Session | None:
+    def find_session(self, item: Connection | Address | tuple) -> Session | None:
         """
         查找会话
         :param item: 地址或连接对象
@@ -271,9 +291,8 @@ class Reporter:
             conn = Connection.from_tuple(conn[0], conn[1])
         for session in self.sessions:
             if conn in session:
-                # return session.find_connection(conn)
-                if session.interanl == conn:
-                    return session.interanl
+                if session.internal == conn:
+                    return session.internal
                 else:
                     return session.external
         return None
@@ -288,10 +307,11 @@ class Reporter:
         try:
             if session.sessionid == -1:
                 session.sessionid = self.db.insert_session(
-                    internal_ip=session.interanl.peername.ip,
+                    internal_ip=session.internal.peername.ip,
                     external_ip=session.external.peername.ip,
-                    internal_port=session.interanl.peername.port,
+                    internal_port=session.internal.peername.port,
                     external_port=session.external.peername.port,
+                    session_start_time=session.ts_start,
                 )
             self.db.insert_packet_session(
                 sessionid=session.sessionid,
@@ -323,33 +343,64 @@ class Reporter:
         finally:
             self.db_lock.release()
 
+    def report_session_end(self, session: Session):
+        """
+        上报会话结束
+        :param session: 会话对象
+        """
+        self.db_lock.acquire()
+        try:
+            self.db.update_session(session.sessionid, session.ts_end)
+        except Exception as e:
+            print(f"[ERROR] 数据库操作失败: {e}")
+        finally:
+            self.db_lock.release()
+
     def session_handle(self, data):
         status = data["status"]
         if status == "start":
             session = Session(self.report_packet)
-            session.interanl = Connection.from_tuple(data["internal_peer"], data["internal_sock"])
+            session.internal = Connection.from_tuple(data["internal_peer"], data["internal_sock"])
             session.ts_start = data["ts_start"]
             self.sessions.append(session)
+            # with open("session.txt", "a") as f:
+            #     f.write(f"session start {data["internal_peer"]}, {data["internal_sock"]}\n")
         elif status == "connected":
-            session = self.find_session(data["internal_peer"])
-            session.external = Connection.from_tuple(data["external_peer"], data["external_sock"])
-            session.external_sni = data["external_sni"]
+            internal = Connection.from_tuple(data["internal_peer"], data["internal_sock"])
+            session = self.find_session(internal)
+            external = Connection.from_tuple(data["external_peer"], data["external_sock"])
+            if session.external is None:
+                session.external = external
+                session.external_sni = data["external_sni"]
+                # with open("session.txt", "a") as f:
+                #     f.write(f"session conne {data["internal_peer"]}, {data["internal_sock"]}, {data["external_peer"]}, {data["external_sock"]}\n")
+            else:
+                session.external.alias.append(external)
+                # with open("session.txt", "a") as f:
+                #     f.write(f"session alias {external}: {external.alias}\n")
         elif status == "end":
-            session = self.find_session(data["internal_peer"])
+            session = self.find_session(Connection.from_tuple(data["internal_peer"], data["internal_sock"]))
             session.ts_end = data["ts_end"]
-            # self.report(session)
+            if session.sessionid != -1:
+                self.report_session_end(session)
             self.sessions.remove(session)
         else:
-            raise ValueError(f"未知会话状态: {status}")
+            raise ValueError(f"[session_handle] 未知会话状态: {status}")
 
     def ciphertext_handle(self, data):
+        # with open("session.txt", "a") as f:
+        #     f.write(f"ciphertext {data["peername"]}, {data["sockname"]}\n")
+
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:
-            raise ValueError(f"未找到会话: {(data["peername"], data["sockname"])}")
-        conn = session.interanl if session.interanl == conn else session.external
+            pass
+        session = self.find_session(conn)
+        if session is None:
+            raise ValueError(f"[ciphertext_handle] 未找到会话: {(data["peername"], data["sockname"])}")
+        conn = session.internal if session.internal == conn else session.external
         if conn is None:
-            raise ValueError(f"未找到连接: {(data["peername"], data["sockname"])}")
+            raise ValueError(f"[ciphertext_handle] 未找到连接: {(data["peername"], data["sockname"])}")
         conn.ciphertext_handle(data)
         session.check_packet(conn)
 
@@ -357,24 +408,24 @@ class Reporter:
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:
-            raise ValueError(f"未找到会话: {(data["peername"], data["sockname"])}")
-        conn = session.interanl if session.interanl == conn else session.external
+            raise ValueError(f"[plaintext_handle] 未找到会话: {(data["peername"], data["sockname"])}")
+        conn = session.internal if session.internal == conn else session.external
         if conn is None:
-            raise ValueError(f"未找到连接: {(data["peername"], data["sockname"])}")
+            raise ValueError(f"[plaintext_handle] 未找到连接: {(data["peername"], data["sockname"])}")
         conn.plaintext_handle(data)
 
     def request_handle(self, data):
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:
-            raise ValueError(f"未找到会话: {(data["peername"], data["sockname"])}")
+            raise ValueError(f"[response_handle] 未找到会话: {(data["peername"], data["sockname"])}")
         session.set_conn_cipher(conn, data)
 
     def response_handle(self, data):
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:
-            raise ValueError(f"未找到会话: {(data["peername"], data["sockname"])}")
+            raise ValueError(f"[response_handle] 未找到会话: {(data["peername"], data["sockname"])}")
         session.set_conn_cipher(conn, data)
 
     def cert_handle(self, data):

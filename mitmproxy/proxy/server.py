@@ -100,13 +100,13 @@ class ConnectionIO:
     writer: asyncio.StreamWriter | mitmproxy_rs.Stream | None = None
 
 @dataclass
-class ConnectionCounter:
-    recv_cnt: int = 0
-    send_cnt: int = 0
+# class ConnectionCounter:
+#     recv_cnt: int = 0
+#     send_cnt: int = 0
 
 class ConnectionHandler(metaclass=abc.ABCMeta):
     transports: MutableMapping[Connection, ConnectionIO]
-    counters: MutableMapping[Connection, ConnectionCounter]
+    # counters: MutableMapping[Connection, ConnectionCounter]
     
     timeout_watchdog: TimeoutWatchdog
     client: Client
@@ -120,11 +120,6 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
         self.max_conns = collections.defaultdict(lambda: asyncio.Semaphore(5))
         self.wakeup_timer = set()
         self.pipe = PipeWriter(context.options.pipe_path)
-        # self.pipe.write("client", context.client.peername)
-        self.counters = {}
-        # self.cnt = 0
-        # self.recv_cnt = 0
-        # self.send_cnt = 0
         
         # Ask for the first layer right away.
         # In a reverse proxy scenario, this is necessary as we would otherwise hang
@@ -260,6 +255,7 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
                 #     "server": command.connection.peername,
                 #     "client": self.client.peername
                 # })
+                
 
                 assert command.connection.peername
                 if command.connection.address[0] != command.connection.peername[0]:
@@ -295,6 +291,26 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
         cancelled = None
         reader = self.transports[connection].reader
         assert reader
+
+        if connection.sockname == self.client.sockname:
+            self.pipe.write("session", {
+                "status": "start",
+                "internal_peer": self.client.peername,
+                "internal_sock": self.client.sockname,
+                "ts_start": self.client.timestamp_start,
+            })
+        else:
+            server = connection
+            client = self.client
+            self.pipe.write("session", {
+                "status": "connected",
+                "internal_peer": client.peername,
+                "internal_sock": client.sockname,
+                "external_sni": server.sni if server.sni else "",
+                "external_peer": server.peername,
+                "external_sock": server.sockname,
+            })
+
         while True:
             try:
                 data = await reader.read(65535)
@@ -306,15 +322,6 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
                 cancelled = e
                 break
 
-            # self.recv_cnt += 1
-            # self.counters[connection].recv_cnt += 1
-            # bsdata = base64.b64encode(data).decode('utf-8')
-            # peer = f"{connection.peername[0]}_{connection.peername[1]}"
-            # sock = f"{connection.sockname[0]}_{connection.sockname[1]}"
-            # self.pipe.write(f"{peer} -- {sock}", 
-            #                 {"recv": self.counters[connection].recv_cnt,
-            #                  "ts": time.time()})
-            # if data[0] == 0x17:
             self.pipe.write("ciphertext", 
                             {"ts": time.time(), 
                             "payload": base64.b64encode(data).decode(),
@@ -450,12 +457,6 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
                         assert writer
                         if not writer.is_closing():
                             writer.write(command.data)
-                            # connection = command.connection
-                            # self.counters[connection].send_cnt += 1
-                            # bsdata = base64.b64encode(command.data).decode('utf-8')
-                            # peer = f"{connection.peername[0]}_{connection.peername[1]}"
-                            # sock = f"{connection.sockname[0]}_{connection.sockname[1]}"
-                            # if command.data[0] == 0x17:
                             self.pipe.write("ciphertext", 
                                             {"ts": time.time(), 
                                             "payload": base64.b64encode(command.data).decode(),

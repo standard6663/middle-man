@@ -22,7 +22,7 @@ class Record:
             'sockname': conn.sockname,
             'cipher_suite': conn.cipher,
             'protocol_version': conn.tls_version,
-            'alpn': conn.alpn.decode()
+            'alpn': conn.alpn.decode() if conn.alpn else ""
         }
         self.pipe.write("request", data)
 
@@ -33,19 +33,19 @@ class Record:
             'sockname': conn.sockname,
             'cipher_suite': conn.cipher,
             'protocol_version': conn.tls_version,
-            'alpn': conn.alpn.decode()
+            'alpn': conn.alpn.decode() if conn.alpn else ""
         }
         self.pipe.write("response", data)
 
     def client_connected(self, client):
-        data = {
-            "status": "start",
-            "internal_peer": client.peername,
-            "internal_sock": client.sockname,
-            "ts_start": client.timestamp_start,
-        }
-
-        self.pipe.write("session", data)
+        # data = {
+        #     "status": "start",
+        #     "internal_peer": client.peername,
+        #     "internal_sock": client.sockname,
+        #     "ts_start": client.timestamp_start,
+        # }
+        # self.pipe.write("session", data)
+        pass
 
     def client_disconnected(self, client):        
         data = {
@@ -58,15 +58,16 @@ class Record:
         self.pipe.write("session", data)
 
     def server_connected(self, conn):
-        client = conn.client
-        server = conn.server
-        data = {
-            "status": "connected",
-            "internal_peer": client.peername,
-            "internal_sock": client.sockname,
-            "external_sni": server.sni,
-            "external_peer": server.peername,
-            "external_sock": server.sockname,
-        }
-        self.pipe.write("session", data)
+        # client = conn.client
+        # server = conn.server
+        # data = {
+        #     "status": "connected",
+        #     "internal_peer": client.peername,
+        #     "internal_sock": client.sockname,
+        #     "external_sni": server.sni,
+        #     "external_peer": server.peername,
+        #     "external_sock": server.sockname,
+        # }
+        # self.pipe.write("session", data)
+        pass
 

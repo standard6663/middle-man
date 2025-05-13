@@ -1,18 +1,19 @@
 import json
 import struct
 import subprocess
-import threading
 from midman.context import Context
+from midman.reporter import Reporter
 from cmdman.cmdman import Command, CommandManager, CommandPacket
 from cmdman.cmdpkt import DateType, UpdateData,ErrorData
-import sys
-PYTHON = sys.executable
+
 # PYTHON = '/middleman-venv/bin/python'
+PYTHON = '/home/unumtu/Desktop/TLS_middle/middle-man/venv/bin/python'
 
 
 class Manager:
-    def __init__(self, ctx: Context):
+    def __init__(self, ctx: Context, reporter: Reporter):
         self.ctx = ctx
+        self.reporter = reporter
         self.cmdman: CommandManager = None
         self.midman_process: subprocess.Popen = None
 
@@ -30,11 +31,12 @@ class Manager:
         command = f'{PYTHON} ./man.py'
         command += f' --set confdir={self.ctx.MIDMAN_CONF}'
         command += f' --set pipe_path={self.ctx.PIPE_PATH}'
+        command += f' --set listen_port={self.ctx.INTERCEPT_PORT}'
         commands = command.split()
         with open(self.ctx.MIDMAN_LOG_PATH, "a") as log_file:
             self.midman_process = subprocess.Popen(
                 commands,
-                stdout=log_file,
+                stdout=None,
                 stderr=subprocess.STDOUT
             )
         print(f"[INFO] 启动中间人: {command}")
@@ -81,12 +83,13 @@ class Manager:
             self.ctx.DB_NAME = db_data.get('DB_NAME')
             self.ctx.DB_USER = db_data.get('DB_USER')
             self.ctx.DB_PASSWORD = db_data.get('DB_PASS')
+            self.reporter.update_db()
         else:
             print(f"[ERROR] 未处理的数据类型: {data_type}")
 
     def cmd_start_handle(self, _):
         if self.__check_runing_param():
-            #self.__run_midman()
+            self.__run_midman()
             pass
         else:
             print("[WARN] 中间人启动参数不完整")

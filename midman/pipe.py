@@ -33,22 +33,39 @@ class PipeWriter:
 class PipeReader:
     def __init__(self, path):
         self.path = path
-        # 确保路径是 FIFO
-        if not os.path.exists(self.path):
-            os.mkfifo(self.path)
-        else:
-            if not stat.S_ISFIFO(os.stat(self.path).st_mode):
-                raise ValueError(f"路径 '{self.path}' 已存在且不是 FIFO")
+        if os.path.exists(self.path):
+            os.remove(self.path)
+        os.mkfifo(self.path)
+        
+        self.buffer = []
+        self.pipe = None
+
+    def __del__(self):
+        self.pipe.close()
+        os.remove(self.path)
+
+    def get_data_from_pipe(self):
+        while True:
+            line = self.pipe.readline()
+            if not line:  
+                break
+            yield json.loads(line.strip())
 
     def read_data(self):
-        with open(self.path, 'r') as f:
-            while True:
-                line = f.readline()
-                if not line:  # EOF
-                    time.sleep(0.1)  # 等待数据
-                    continue
-                yield json.loads(line.strip())
+        if self.pipe is None:
+            self.pipe = open(self.path, 'r')
+        data_generator = self.get_data_from_pipe()
+        while True:
+            self.buffer = [next(data_generator)] + self.buffer
+            if len(self.buffer) == 0:
+                time.sleep(0.01) # Sleep for a short time to avoid busy waiting
+            while len(self.buffer) > 0:
+                yield self.buffer.pop(0)
+                
+    def retry_data(self, data):
+        self.buffer.append(data)
 
     def __del__(self):
         if os.path.exists(self.path):
             os.remove(self.path)
+

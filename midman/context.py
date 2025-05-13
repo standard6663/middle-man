@@ -7,10 +7,10 @@ class Context:
 
         self.MIDMAN_CONF = os.environ.get('MIDMAN_CONF', ".midman")
         self.MIDMAN_SECRET = os.environ.get('MIDMAN_SECRET', "midman_secret")
-        self.MIDMAN_PORT = int(os.environ.get('MIDMAN_PORT', "12039"))
+        self.MIDMAN_PORT = 12039
         self.MIDMAN_CERT_PATH = f"{self.MIDMAN_CONF}/midman-ca.pem"
         self.MIDMAN_LOG_PATH = os.environ.get('MIDMAN_LOG_PATH', "/tmp/midman.log")
-
+        
         self.DB_HOST = None
         self.DB_PORT = None
         self.DB_NAME = None
@@ -20,3 +20,4 @@ class Context:
         self.ROOT_CA_CERT = None
         self.INTERMEDIATE_CA_KEY = None
         self.INTERMEDIATE_CA_CERT = None
+        self.INTERCEPT_PORT = 7891

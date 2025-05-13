@@ -37,7 +37,7 @@ class TrafficDatabase:
                                cipher_suite, payload, protocol_version, packet_size, delay):
         with self.connection.cursor() as cursor:
             sql = """
-                INSERT INTO packetsession (
+                INSERT INTO packet (
                     sessionid, source_ip, source_port, destination_ip, destination_port,
                     cipher_suite, payload, protocol_version, packet_size, delay
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -89,7 +89,7 @@ class TrafficDatabaseDebug:
     def insert_packet_session(self, sessionid, source_ip, source_port, destination_ip, destination_port,
                                  cipher_suite, payload, protocol_version, packet_size, delay):
         sql = """
-            INSERT INTO packetsession (
+            INSERT INTO packet (
                 sessionid, source_ip, source_port, destination_ip, destination_port,
                 cipher_suite, payload, protocol_version, packet_size, delay
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)

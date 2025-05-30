@@ -28,7 +28,7 @@ class TrafficDatabase:
             sql = """
                 UPDATE session
                 SET session_end_time = %s
-                WHERE sessionid = %s
+                WHERE id = %s
             """
             cursor.execute(sql, (session_end_time, sessionid))
             self.connection.commit()
@@ -102,7 +102,7 @@ class TrafficDatabaseDebug:
         sql = """
             UPDATE session
             SET session_end_time = %s
-            WHERE sessionid = %s
+            WHERE id = %s
         """
         print(f"执行 SQL: {sql % (session_end_time, sessionid)}".replace('\n', ' '))
         return 0

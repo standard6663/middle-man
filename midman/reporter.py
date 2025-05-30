@@ -81,6 +81,7 @@ class Connection:
 
     def ciphertext_handle(self, data):
         binary = base64.b64decode(data['payload'])
+        #print(f"ciphertext_handle{data}")
         packet = TLS(binary)
         if packet.haslayer(TLSApplicationData):
             if data['direction'] == 'recv':
@@ -89,6 +90,7 @@ class Connection:
                 self.cipher_send_tss.append(data['ts'])
 
     def plaintext_handle(self, data):
+        #print(f"plaintext_handle{data}")
         binary = base64.b64decode(data['payload'])
         if data['direction'] == 'recv':
             self.plain_data.append((data['ts'], binary))
@@ -184,6 +186,7 @@ class Session:
                     packet_size=len(plain_data),
                     delay=ts_end - ts_start,
                     timestamp=plain_ts,
+                    alpn=conn.alpn,
                 )
                 self.report_cb(self, pkt)
             else:
@@ -313,6 +316,8 @@ class Reporter:
                     external_port=session.external.peername.port,
                     session_start_time=session.ts_start,
                 )
+            print(f"alpntype{type(packet.alpn)}")
+            print(packet.alpn)
             self.db.insert_packet_session(
                 sessionid=session.sessionid,
                 source_ip=packet.source_ip,
@@ -324,6 +329,7 @@ class Reporter:
                 protocol_version=packet.protocol_version,
                 packet_size=packet.packet_size,
                 delay=packet.delay,
+                alpn=packet.alpn,
             )
         except Exception as e:
             print(f"[ERROR] 数据库操作失败: {e}")
@@ -358,6 +364,7 @@ class Reporter:
 
     def session_handle(self, data):
         status = data["status"]
+        #print(f"session_handle{data}")
         if status == "start":
             session = Session(self.report_packet)
             session.internal = Connection.from_tuple(data["internal_peer"], data["internal_sock"])
@@ -390,7 +397,7 @@ class Reporter:
     def ciphertext_handle(self, data):
         # with open("session.txt", "a") as f:
         #     f.write(f"ciphertext {data["peername"]}, {data["sockname"]}\n")
-
+        #print(f"ciphertext_handle2{data}")
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:
@@ -405,6 +412,7 @@ class Reporter:
         session.check_packet(conn)
 
     def plaintext_handle(self, data):
+        #print(f"plaintext_handle2{data}")
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:
@@ -415,6 +423,7 @@ class Reporter:
         conn.plaintext_handle(data)
 
     def request_handle(self, data):
+        #print(f"request_handle{data}")
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:
@@ -422,6 +431,7 @@ class Reporter:
         session.set_conn_cipher(conn, data)
 
     def response_handle(self, data):
+        #print(f"response_handle{data}")
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:
@@ -429,4 +439,5 @@ class Reporter:
         session.set_conn_cipher(conn, data)
 
     def cert_handle(self, data):
+        #print(f"cert_handle{data}")
         self.report_cert(data["cert"])

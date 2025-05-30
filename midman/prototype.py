@@ -1,6 +1,6 @@
 class PacketType:
     def __init__(self, source_ip: str, source_port: int, destination_ip: str, destination_port: int,
-                    cipher_suite: str, payload: bytes, protocol_version: str, packet_size: int, delay: int, timestamp: float):
+                    cipher_suite: str, payload: bytes, protocol_version: str, packet_size: int, delay: int, timestamp: float,alpn: str):
             self.source_ip = source_ip
             self.source_port = source_port
             self.destination_ip = destination_ip
@@ -12,6 +12,7 @@ class PacketType:
             self.packet_size = packet_size
             self.delay = delay
             self.timestamp = timestamp
+            self.alpn=alpn
 
     def __repr__(self):
         return f"PacketType(source_ip={self.source_ip}, source_port={self.source_port}, destination_ip={self.destination_ip}, destination_port={self.destination_port}, cipher_suite={self.cipher_suite}, payload={self.payload}, protocol_version={self.protocol_version}, packet_size={self.packet_size}, delay={self.delay}), payload={self.brief_payload})"

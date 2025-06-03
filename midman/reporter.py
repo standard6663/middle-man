@@ -315,6 +315,7 @@ class Reporter:
                     internal_port=session.internal.peername.port,
                     external_port=session.external.peername.port,
                     session_start_time=session.ts_start,
+                    external_sni = session.external_sni,
                 )
             print(f"alpntype{type(packet.alpn)}")
             print(packet.alpn)

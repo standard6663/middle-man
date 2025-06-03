@@ -13,13 +13,13 @@ class TrafficDatabase:
             cursorclass=pymysql.cursors.DictCursor
         )
 
-    def insert_session(self, internal_ip, external_ip, internal_port, external_port, session_start_time="", session_end_time=""):
+    def insert_session(self, internal_ip, external_ip, internal_port, external_port, external_sni, session_start_time="", session_end_time=""):
         with self.connection.cursor() as cursor:
             sql = """
-                INSERT INTO session (internal_ip, external_ip, internal_port, external_port, session_start_time, session_end_time)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO session (internal_ip, external_ip, internal_port, external_port, external_sni, session_start_time, session_end_time)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
-            cursor.execute(sql, (internal_ip, external_ip, internal_port, external_port, session_start_time, session_end_time))
+            cursor.execute(sql, (internal_ip, external_ip, internal_port, external_port,external_sni,session_start_time, session_end_time))
             self.connection.commit()
             return cursor.lastrowid  # 返回插入记录的ID（sessionid）
         

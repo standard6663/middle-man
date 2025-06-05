@@ -6,6 +6,8 @@ from midman.pipe import PipeReader
 from scapy.layers.tls.all import TLS, TLSApplicationData
 from midman.prototype import PacketType
 from midman.database import TrafficDatabase
+import queue
+import time
 # from midman.database import TrafficDatabaseDebug as TrafficDatabase
 
 
@@ -215,6 +217,10 @@ class Reporter:
         self.db: TrafficDatabase = None
         self.db_lock = threading.Lock()
         self.sessions: list[Session] = []
+        buffer_size = int(getattr(ctx, 'ASYNC_QUEUE_SIZE', 8000))  # 默认8000
+        self.db_queue = queue.Queue(maxsize=buffer_size)
+        self.db_writer_thread = threading.Thread(target=self._db_writer_worker, daemon=True)
+        self.db_writer_thread.start()
 
     def __listen_worker(self):
         """
@@ -300,42 +306,52 @@ class Reporter:
                     return session.external
         return None
 
+    def _db_writer_worker(self):
+        while True:
+            try:
+                session, packet = self.db_queue.get()
+                self.db_lock.acquire()
+                try:
+                    if session.sessionid == -1:
+                        session.sessionid = self.db.insert_session(
+                            internal_ip=session.internal.peername.ip,
+                            external_ip=session.external.peername.ip,
+                            internal_port=session.internal.peername.port,
+                            external_port=session.external.peername.port,
+                            session_start_time=session.ts_start,
+                            external_sni = session.external_sni,
+                        )
+                    self.db.insert_packet_session(
+                        sessionid=session.sessionid,
+                        source_ip=packet.source_ip,
+                        source_port=packet.source_port,
+                        destination_ip=packet.destination_ip,
+                        destination_port=packet.destination_port,
+                        cipher_suite=packet.cipher_suite,
+                        payload=packet.payload,
+                        protocol_version=packet.protocol_version,
+                        packet_size=packet.packet_size,
+                        delay=packet.delay,
+                        alpn=packet.alpn,
+                    )
+                except Exception as e:
+                    print(f"[ERROR] 数据库操作失败: {e}")
+                finally:
+                    self.db_lock.release()
+                self.db_queue.task_done()
+            except Exception as e:
+                print(f"[ERROR] 异步写线程异常: {e}")
+                time.sleep(1)  # 防止异常导致死循环
     def report_packet(self, session: Session, packet: PacketType):
         """
         上报数据包
         :param session: 会话对象
         :param packet: 数据包对象
         """
-        self.db_lock.acquire()
         try:
-            if session.sessionid == -1:
-                session.sessionid = self.db.insert_session(
-                    internal_ip=session.internal.peername.ip,
-                    external_ip=session.external.peername.ip,
-                    internal_port=session.internal.peername.port,
-                    external_port=session.external.peername.port,
-                    session_start_time=session.ts_start,
-                    external_sni = session.external_sni,
-                )
-            print(f"alpntype{type(packet.alpn)}")
-            print(packet.alpn)
-            self.db.insert_packet_session(
-                sessionid=session.sessionid,
-                source_ip=packet.source_ip,
-                source_port=packet.source_port,
-                destination_ip=packet.destination_ip,
-                destination_port=packet.destination_port,
-                cipher_suite=packet.cipher_suite,
-                payload=packet.payload,
-                protocol_version=packet.protocol_version,
-                packet_size=packet.packet_size,
-                delay=packet.delay,
-                alpn=packet.alpn,
-            )
-        except Exception as e:
-            print(f"[ERROR] 数据库操作失败: {e}")
-        finally:
-            self.db_lock.release()
+            self.db_queue.put_nowait((session, packet))
+        except queue.Full:
+            print("[ERROR] 数据写入队列已满，丢弃数据包")
 
     def report_cert(self, cert: str):
         """
@@ -405,7 +421,8 @@ class Reporter:
             pass
         session = self.find_session(conn)
         if session is None:
-            raise ValueError(f"[ciphertext_handle] 未找到会话: {(data["peername"], data["sockname"])}")
+            # raise ValueError(f"[ciphertext_handle] 未找到会话: {(data["peername"], data["sockname"])}")
+            pass
         conn = session.internal if session.internal == conn else session.external
         if conn is None:
             raise ValueError(f"[ciphertext_handle] 未找到连接: {(data["peername"], data["sockname"])}")

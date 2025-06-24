@@ -9,7 +9,7 @@ from midman.database import TrafficDatabase
 import queue
 import time
 # from midman.database import TrafficDatabaseDebug as TrafficDatabase
-
+ASYNC_QUEUE_SIZE = 8000
 
 class Address:
     def __init__(self, ip, port):
@@ -248,7 +248,8 @@ class Reporter:
                             data['data']['retry_times'] = retry_times + 1
                             self.pipe.retry_data(data)
                         else:
-                            print(f"[ERROR] {e}, 重试次数超过限制: {retry_times + 1}")
+                            # print(f"[ERROR] {e}, 重试次数超过限制: {retry_times + 1}")
+                            pass
                     else:
                         print(f"[ERROR] {e}")
             else:

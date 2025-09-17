@@ -34,17 +34,17 @@ class TrafficDatabase:
             self.connection.commit()
 
     def insert_packet_session(self, sessionid, source_ip, source_port, destination_ip, destination_port,
-                               cipher_suite, payload, protocol_version, packet_size, delay,alpn):
+                               cipher_suite, payload, protocol_version, packet_size, delay,alpn,cipher_data):
         with self.connection.cursor() as cursor:
             sql = """
                 INSERT INTO packetsession (
                     sessionid, source_ip, source_port, destination_ip, destination_port,
-                    cipher_suite, payload, protocol_version, packet_size, delay,alpn
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    cipher_suite, payload, protocol_version, packet_size, delay,alpn,cipher_data
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(sql, (
                 sessionid, source_ip, source_port, destination_ip, destination_port,
-                cipher_suite, payload, protocol_version, packet_size, delay,alpn
+                cipher_suite, payload, protocol_version, packet_size, delay,alpn,cipher_data
             ))
             self.connection.commit()
 

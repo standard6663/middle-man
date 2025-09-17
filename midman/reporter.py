@@ -9,7 +9,7 @@ from midman.database import TrafficDatabase
 import queue
 import time
 # from midman.database import TrafficDatabaseDebug as TrafficDatabase
-ASYNC_QUEUE_SIZE = 8000
+ASYNC_QUEUE_SIZE = 64000
 
 class Address:
     def __init__(self, ip, port):
@@ -42,6 +42,7 @@ class Connection:
         self.cipher_recv_tss: list[float] = []
         self.cipher_send_tss: list[float] = []
         self.plain_data: list[tuple[float, bytes]] = []
+        self.cipher_records: list[dict] = []
 
         self.cipher_suite: str = None
         self.protocol_version: str = None
@@ -83,13 +84,16 @@ class Connection:
 
     def ciphertext_handle(self, data):
         binary = base64.b64decode(data['payload'])
-        #print(f"ciphertext_handle{data}")
+        # print(f"ciphertext_handle{data}")
         packet = TLS(binary)
         if packet.haslayer(TLSApplicationData):
             if data['direction'] == 'recv':
                 self.cipher_recv_tss.append(data['ts'])
             else:
                 self.cipher_send_tss.append(data['ts'])
+        print(type(data))
+        print(f"ciphertext_handle{data}")
+        self.cipher_records.append(data)
 
     def plaintext_handle(self, data):
         #print(f"plaintext_handle{data}")
@@ -149,6 +153,7 @@ class Session:
             raise ValueError(f"未知连接: {conn}")
 
         plain_left = []
+        cipher_left = []
         while len(conn.plain_data) > 0:
             ts_start: float = None
             ts_end: float = None
@@ -176,6 +181,39 @@ class Session:
                     ts_end = ts
                     break
 
+            cipher_blob = None
+            for rec in conn.cipher_records:
+                if ts_start and ts_end and ts_start <= rec['ts'] <= ts_end:
+                    if len(base64.b64decode(rec['payload'])) > len(plain_data):
+                        cipher_blob = rec['payload']
+                        # 匹配到则不放入 cipher_left，相当于“pop”掉
+                        break
+                else:
+                    cipher_left.append(rec)  # 只有不匹配的留下
+
+            # # add cipher_blob
+            # cipher_blob = None
+            # print(
+            #     f"[DEBUG] plain_ts={plain_ts}, ts_start={ts_start}, ts_end={ts_end}, "
+            #     f"cipher_records_count={len(conn.cipher_records)}"
+            # )
+
+            # for rec in conn.cipher_records:
+            #     # 打印每一条记录的关键字段
+            #     print(
+            #         f"[DEBUG] rec.ts={rec.get('ts')}, rec.direction={rec.get('direction')}, "
+            #         f"condition={bool(ts_start and ts_end and ts_start <= rec.get('ts', 0) <= ts_end)}"
+            #     )
+
+            #     # 匹配条件判断
+            #     if ts_start and ts_end and ts_start <= rec['ts'] <= ts_end:
+            #         cipher_blob = rec['payload']
+            #         print(
+            #             f"[DEBUG] --> Match found! cipher_blob length={len(cipher_blob)} "
+            #             f"between {ts_start} and {ts_end}"
+            #         )
+            #         break
+
             if ts_start and ts_end:
                 pkt = PacketType(
                     source_ip=conn.peername.ip,
@@ -189,11 +227,13 @@ class Session:
                     delay=ts_end - ts_start,
                     timestamp=plain_ts,
                     alpn=conn.alpn,
+                    cipher_data=cipher_blob,
                 )
                 self.report_cb(self, pkt)
             else:
                 plain_left.append((plain_ts, plain_data))
         conn.plain_data = plain_left
+        conn.cipher_records = cipher_left
 
     def set_conn_cipher(self, conn: Connection, data: dict):
         if conn == self.internal:
@@ -334,6 +374,7 @@ class Reporter:
                         packet_size=packet.packet_size,
                         delay=packet.delay,
                         alpn=packet.alpn,
+                        cipher_data=packet.cipher_data,
                     )
                 except Exception as e:
                     print(f"[ERROR] 数据库操作失败: {e}")
@@ -415,7 +456,7 @@ class Reporter:
     def ciphertext_handle(self, data):
         # with open("session.txt", "a") as f:
         #     f.write(f"ciphertext {data["peername"]}, {data["sockname"]}\n")
-        #print(f"ciphertext_handle2{data}")
+        # print(f"ciphertext_handle2{data}")
         conn = Connection.from_tuple(data["peername"], data["sockname"])
         session = self.find_session(conn)
         if session is None:

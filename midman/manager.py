@@ -8,8 +8,8 @@ from cmdman.cmdpkt import DateType, UpdateData,ErrorData
 
 # PYTHON = '/middleman-venv/bin/python'
 PYTHON = '/home/unumtu/Desktop/TLS_middle/middle-man/venv/bin/python'
-
-
+import sys, os
+PYTHON = os.environ.get('MIDMAN_PYTHON') or '/app/venv/bin/python'
 class Manager:
     def __init__(self, ctx: Context, reporter: Reporter):
         self.ctx = ctx
@@ -28,7 +28,8 @@ class Manager:
         with open(self.ctx.MIDMAN_CERT_PATH, 'w') as f:
             f.write(certs_data)
         # start midman
-        command = f'{PYTHON} ./man.py'
+        # command = f'{PYTHON} ./man.py'
+        command = './man.bin'
         command += f' --set confdir={self.ctx.MIDMAN_CONF}'
         command += f' --set pipe_path={self.ctx.PIPE_PATH}'
         command += f' --set listen_port={self.ctx.INTERCEPT_PORT}'
@@ -56,12 +57,15 @@ class Manager:
     def __check_runing_param(self) -> bool:
         success = True
         if not self.ctx.MIDMAN_PORT:
+            print("__check_runing_param",1)
             success = False
             self.__send_error_message(int(DateType.PORT), "中间人端口未设置")
         if not (self.ctx.DB_HOST and self.ctx.DB_PORT and self.ctx.DB_NAME and self.ctx.DB_USER and self.ctx.DB_PASSWORD):
+            print("__check_runing_param",2)
             success = False
             self.__send_error_message(int(DateType.DATABSE), "数据库主机未设置")
         if not (self.ctx.ROOT_CA_CERT and self.ctx.INTERMEDIATE_CA_KEY and self.ctx.INTERMEDIATE_CA_CERT):
+            print("__check_runing_param",3)
             success = False
             self.__send_error_message(int(DateType.CERTS), "证书未设置")
         return success

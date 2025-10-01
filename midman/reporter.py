@@ -91,8 +91,7 @@ class Connection:
                 self.cipher_recv_tss.append(data['ts'])
             else:
                 self.cipher_send_tss.append(data['ts'])
-        print(type(data))
-        print(f"ciphertext_handle{data}")
+        #print(f"ciphertext_handle{data}")
         self.cipher_records.append(data)
 
     def plaintext_handle(self, data):

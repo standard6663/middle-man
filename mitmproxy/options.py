@@ -173,7 +173,7 @@ class Options(optmanager.OptManager):
         self.add_option(
             "ssl_insecure",
             bool,
-            False,
+            True,
             """Do not verify upstream server SSL/TLS certificates.
 
             If this option is enabled, certificate validation is skipped and mitmproxy itself will be vulnerable to

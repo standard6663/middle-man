@@ -42,6 +42,9 @@ RUN bash -c "source /tmp/venv/bin/activate && \
 # 第二阶段：运行时环境
 FROM ubuntu:24.04
 
+
+COPY --from=builder /build/app/services/china_provinces/GeoLite2-City.mmdb /app/app/services/china_provinces/GeoLite2-City.mmdb
+
 # 安装运行时依赖
 RUN apt-get update && \
     apt-get install -y \

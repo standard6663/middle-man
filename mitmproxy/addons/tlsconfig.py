@@ -299,6 +299,13 @@ class TlsConfig:
                     server.alpn_offers = tuple(
                         x for x in client.alpn_offers if x != b"h2"
                     )
+                # if client.alpn_offers:
+                #     # 强制只协商 HTTP/1.1
+                #     if b"http/1.1" in client.alpn_offers:
+                #         server.alpn_offers = (b"http/1.1",)
+                #     else:
+                #         # 客户端没有声明 http/1.1，则不发送 ALPN
+                #         server.alpn_offers = []
             else:
                 # We either have no client TLS or a client without ALPN.
                 # - If the client does use TLS but did not send an ALPN extension, we want to mirror that upstream.

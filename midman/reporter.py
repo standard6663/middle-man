@@ -139,7 +139,7 @@ class Session:
             return self.external
         return None
 
-    def check_packet(self, to_conn: Connection):
+    def check_packet(self, to_conn: Connection):#核心函数，组包
         if not (self.internal and self.external):
             return
 

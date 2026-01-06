@@ -142,7 +142,7 @@ class Session:
             return self.external
         return None
 
-    def check_packet(self, to_conn: Connection):#核心函数，组包
+    def check_packet(self, to_conn: Connection):
         if not (self.internal and self.external):
             return
 
@@ -156,11 +156,7 @@ class Session:
             raise ValueError(f"未知连接: {conn}")
 
         plain_left = []
-        cipher_left = []
         while len(conn.plain_data) > 0:
-            print("hello")
-            print(type(conn.plain_data))
-            print(conn.plain_data[0])
             ts_start: float = None
             ts_end: float = None
             ts_index: int = None
@@ -187,16 +183,15 @@ class Session:
                     ts_end = ts
                     break
 
-
-        cipher_blob = None
-        for rec in conn.cipher_records:
-            if ts_start and ts_end and ts_start <= rec['ts'] <= ts_end:
-                if len(base64.b64decode(rec['payload'])) > len(plain_data):
+            cipher_left = []
+            cipher_blob = None
+            for rec in conn.cipher_records:
+                if ts_start and ts_end and ts_start <= rec['ts'] <= ts_end:
                     cipher_blob = rec['payload']
                     # 匹配到则不放入 cipher_left，相当于“pop”掉
                     break
-            else:
-                cipher_left.append(rec)  # 只有不匹配的留下
+                else:
+                    cipher_left.append(rec)  # 只有不匹配的留下
         # # 尝试匹配密文
         # cipher_blob = b""
         # print(len(conn.cipher_records))

@@ -89,19 +89,23 @@ def alpn_select_callback(conn: SSL.Connection, options: list[bytes]) -> Any:
     client_alpn = app_data["client_alpn"]
     server_alpn = app_data["server_alpn"]
     http2 = app_data["http2"]
+
+    # If something forced a specific ALPN for the client-side connection, enforce it.
     if client_alpn is not None:
         if client_alpn in options:
             return client_alpn
         else:
             return SSL.NO_OVERLAPPING_PROTOCOLS
+
+    # If we already have a negotiated upstream ALPN, mirror it if possible.
     if server_alpn and server_alpn in options:
         return server_alpn
     if server_alpn == b"":
-        # We do have a server connection, but the remote server refused to negotiate a protocol:
-        # We need to mirror this on the client connection.
+        # Upstream refused ALPN negotiation -> mirror this.
         return SSL.NO_OVERLAPPING_PROTOCOLS
+
     http_alpns = proxy_tls.HTTP_ALPNS if http2 else proxy_tls.HTTP1_ALPNS
-    # client sends in order of preference, so we are nice and respect that.
+    # Respect the client's ALPN preference order (curl --http2 puts h2 first, --http1.1 puts http/1.1 first/only).
     for alpn in options:
         if alpn in http_alpns:
             return alpn
@@ -291,25 +295,17 @@ class TlsConfig:
         if not server.alpn_offers:
             if client.alpn_offers:
                 if ctx.options.http2:
-                    # We would perfectly support HTTP/1 -> HTTP/2, but we want to keep things on the same protocol
-                    # version. There are some edge cases where we want to mirror the regular server's behavior
-                    # accurately, for example header capitalization.
+                    # Mirror the client's ALPN offers upstream.
+                    # This makes curl --http2 prefer h2 and curl --http1.1 prefer http/1.1 (when the server supports it).
                     server.alpn_offers = tuple(client.alpn_offers)
                 else:
-                    server.alpn_offers = tuple(
-                        x for x in client.alpn_offers if x != b"h2"
-                    )
+                    server.alpn_offers = tuple(x for x in client.alpn_offers if x != b"h2")
             else:
-                # We either have no client TLS or a client without ALPN.
-                # - If the client does use TLS but did not send an ALPN extension, we want to mirror that upstream.
-                # - If the client does not use TLS, there's no clear-cut answer. As a pragmatic approach, we also do
-                #   not send any ALPN extension in this case, which defaults to whatever protocol we are speaking
-                #   or falls back to HTTP.
+                # Mirror "no ALPN" upstream if client did not send ALPN.
                 server.alpn_offers = []
 
         if not server.cipher_list and ctx.options.ciphers_server:
             server.cipher_list = ctx.options.ciphers_server.split(":")
-        # don't assign to client.cipher_list, doesn't need to be stored.
         cipher_list = server.cipher_list or _default_ciphers(
             net_tls.Version[ctx.options.tls_version_server_min]
         )
@@ -342,14 +338,8 @@ class TlsConfig:
 
         tls_start.ssl_conn = SSL.Connection(ssl_ctx)
         if server.sni:
-            # We need to set SNI + enable hostname verification.
             assert isinstance(server.sni, str)
-            # Manually enable hostname verification on the context object.
-            # https://wiki.openssl.org/index.php/Hostname_validation
             param = SSL._lib.SSL_get0_param(tls_start.ssl_conn._ssl)  # type: ignore
-            # Matching on the CN is disabled in both Chrome and Firefox, so we disable it, too.
-            # https://www.chromestatus.com/feature/4981025180483584
-
             SSL._lib.X509_VERIFY_PARAM_set_hostflags(param, DEFAULT_HOSTFLAGS)  # type: ignore
 
             try:
@@ -362,8 +352,6 @@ class TlsConfig:
                 )  # type: ignore
                 SSL._openssl_assert(ok == 1)  # type: ignore
             else:
-                # RFC 6066: Literal IPv4 and IPv6 addresses are not permitted in "HostName",
-                # so we don't call set_tlsext_host_name.
                 ok = SSL._lib.X509_VERIFY_PARAM_set1_ip(param, ip, len(ip))  # type: ignore
                 SSL._openssl_assert(ok == 1)  # type: ignore
         elif verify is not net_tls.Verify.VERIFY_NONE:

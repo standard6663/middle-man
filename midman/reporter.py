@@ -40,10 +40,13 @@ class Connection:
         self.peername: Address = None
         self.sockname: Address = None
         self.cipher_recv_tss: list[float] = []
+        # [1767661164.0776563, 1767661164.0776563, 1767661164.0776563, 1767661164.0776563, 1767661164.0776563]
         self.cipher_send_tss: list[float] = []
+        # [1767661164.0690994, 1767661164.0695918......]
         self.plain_data: list[tuple[float, bytes]] = []
         self.cipher_records: list[dict] = []
-
+        # {'ts': 1767661030.0193048, 'payload': 'FwMDADg8YGtFAHyploHcAB0k9KMjPEbDvo6Q1ya9hHahi8fRJZwqIGF32bdgVSYmARd0pSk+0W3f3Fm2lg==', 
+        # 'role': 'server', 'peername': ['111.47.206.119', 443], 'sockname': ['192.168.0.112', 44884], 'direction': 'send', 'retry_times': 20}
         self.cipher_suite: str = None
         self.protocol_version: str = None
         self.alpn: str = None
@@ -155,6 +158,9 @@ class Session:
         plain_left = []
         cipher_left = []
         while len(conn.plain_data) > 0:
+            print("hello")
+            print(type(conn.plain_data))
+            print(conn.plain_data[0])
             ts_start: float = None
             ts_end: float = None
             ts_index: int = None
@@ -181,15 +187,33 @@ class Session:
                     ts_end = ts
                     break
 
-            cipher_blob = None
-            for rec in conn.cipher_records:
-                if ts_start and ts_end and ts_start <= rec['ts'] <= ts_end:
-                    if len(base64.b64decode(rec['payload'])) > len(plain_data):
-                        cipher_blob = rec['payload']
-                        # 匹配到则不放入 cipher_left，相当于“pop”掉
-                        break
-                else:
-                    cipher_left.append(rec)  # 只有不匹配的留下
+
+        cipher_blob = None
+        for rec in conn.cipher_records:
+            if ts_start and ts_end and ts_start <= rec['ts'] <= ts_end:
+                if len(base64.b64decode(rec['payload'])) > len(plain_data):
+                    cipher_blob = rec['payload']
+                    # 匹配到则不放入 cipher_left，相当于“pop”掉
+                    break
+            else:
+                cipher_left.append(rec)  # 只有不匹配的留下
+        # # 尝试匹配密文
+        # cipher_blob = b""
+        # print(len(conn.cipher_records))
+        # print(type(conn.cipher_records))
+        # print(conn.cipher_records[0])
+        # while len(conn.cipher_records) > 0:
+        #     cipher_rec = conn.cipher_records.pop(0)  # 从 cipher_records 中弹出一条密文
+        #     cipher_ts = cipher_rec["ts"]
+
+        #     # 如果密文时间戳在 ts_start 和 ts_end 范围内，匹配
+        #     if ts_start and ts_end and ts_start <= cipher_ts <= ts_end:
+        #         cipher_blob = cipher_rec["payload"]  # 获取密文数据
+        #         break
+        #     else:
+        #         # 未匹配成功的放入暂存区
+        #         cipher_left.append(cipher_rec)
+
 
             # # add cipher_blob
             # cipher_blob = None

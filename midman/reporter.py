@@ -8,6 +8,7 @@ from midman.prototype import PacketType
 from midman.database import TrafficDatabase
 import queue
 import time
+import base64
 # from midman.database import TrafficDatabaseDebug as TrafficDatabase
 ASYNC_QUEUE_SIZE = 64000
 
@@ -182,7 +183,7 @@ class Session:
                 if ts > plain_ts:
                     ts_end = ts
                     break
-
+        
             cipher_left = []
             cipher_blob = None
             for rec in conn.cipher_records:
@@ -192,6 +193,7 @@ class Session:
                     break
                 else:
                     cipher_left.append(rec)  # 只有不匹配的留下
+
         # # 尝试匹配密文
         # cipher_blob = b""
         # print(len(conn.cipher_records))

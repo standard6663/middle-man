@@ -33,6 +33,7 @@ class Manager:
         command += f' --set confdir={self.ctx.MIDMAN_CONF}'
         command += f' --set pipe_path={self.ctx.PIPE_PATH}'
         command += f' --set listen_port={self.ctx.INTERCEPT_PORT}'
+        # command += f' --rawtcp'  # 转发非HTTP流量
         commands = command.split()
         with open(self.ctx.MIDMAN_LOG_PATH, "a") as log_file:
             self.midman_process = subprocess.Popen(

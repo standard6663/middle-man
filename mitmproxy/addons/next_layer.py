@@ -163,7 +163,7 @@ class NextLayer:
             or data_client.startswith(b"SSH")
         )
         if ctx.options.rawtcp and probably_no_http:
-            return layers.TCPLayer(context)
+            return layers.TCPLayer(context)#透明转发
         # 5c) Assume HTTP by default.
         return layers.HttpLayer(context, HTTPMode.transparent)
 

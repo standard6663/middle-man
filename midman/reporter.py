@@ -233,6 +233,7 @@ class Session:
             #             f"between {ts_start} and {ts_end}"
             #         )
             #         break
+
             if ts_start and ts_end:
                 pkt = PacketType(
                     source_ip=conn.peername.ip,
@@ -243,7 +244,7 @@ class Session:
                     payload=plain_data,
                     protocol_version=conn.protocol_version,
                     packet_size=len(plain_data),
-                    delay=ts_end - ts_start,
+                    delay=(ts_end - ts_start) * 1000 ,
                     timestamp=plain_ts,
                     alpn=conn.alpn,
                     cipher_data=cipher_blob,

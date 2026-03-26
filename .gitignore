@@ -40,4 +40,4 @@ web/coverage/
 *.build
 
 certs
-.midman*
+.midman**.tar

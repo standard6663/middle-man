@@ -141,7 +141,7 @@ class Session:
         elif item in self.external:
             return self.external
         return None
-
+    # 核心逻辑：根据明文时间戳匹配密文时间戳，构造 PacketType 对象并上报
     def check_packet(self, to_conn: Connection):
         if not (self.internal and self.external):
             return
@@ -233,7 +233,6 @@ class Session:
             #             f"between {ts_start} and {ts_end}"
             #         )
             #         break
-
             if ts_start and ts_end:
                 pkt = PacketType(
                     source_ip=conn.peername.ip,

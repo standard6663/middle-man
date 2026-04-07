@@ -290,55 +290,117 @@ def dummy_cert(
     commonname: str | None,
     sans: Iterable[x509.GeneralName],
     organization: str | None = None,
+    upstream_cert: x509.Certificate | None = None,   # NEW
 ) -> Cert:
     """
-    Generates a dummy certificate.
+    Generates a dummy certificate signed by our CA.
 
-    privkey: CA private key
-    cacert: CA certificate
-    commonname: Common name for the generated certificate.
-    sans: A list of Subject Alternate Names.
-    organization: Organization name for the generated certificate.
-
-    Returns cert if operation succeeded, None if not.
+    NOTE: This keeps the existing behavior (leaf public key == CA public key) to avoid key management changes.
     """
     builder = x509.CertificateBuilder()
     builder = builder.issuer_name(cacert.subject)
-    builder = builder.add_extension(
-        x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False
-    )
+
+    # Track which extensions we already added to avoid duplicates.
+    added_oids: set[x509.ObjectIdentifier] = set()
+    print("upstream_cert:", upstream_cert)
+    def _add_ext(ext: x509.ExtensionType, critical: bool) -> None:
+        nonlocal builder
+        oid = ext.oid
+        if oid in added_oids:
+            return
+        builder = builder.add_extension(ext, critical=critical)
+        added_oids.add(oid)
+
+    # 1) Copy extensions from upstream cert (best-effort, "mimic" mode).
+    #    We skip SAN/AKI because we rebuild them below.
+    if upstream_cert is not None:
+        for e in upstream_cert.extensions:
+            if e.oid in (
+                x509.ExtensionOID.SUBJECT_ALTERNATIVE_NAME,   # we build our own SAN
+                x509.ExtensionOID.AUTHORITY_KEY_IDENTIFIER,   # must point to our CA
+            ):
+                continue
+
+            # Avoid copying CA=true by accident. For leaf cert, enforce ca=False later.
+            if e.oid == x509.ExtensionOID.BASIC_CONSTRAINTS:
+                continue
+
+            # Copy almost everything else, including AIA/CRLDP if present.
+            # This includes: KeyUsage, EKU, CertificatePolicies, AIA, CRLDistributionPoints, SCT, etc.
+            _add_ext(e.value, e.critical)
+
+    # 2) Add/override MUST-HAVE extensions for our leaf cert.
+
+    # EKU: ensure serverAuth exists. If upstream EKU existed, we keep it (already added above),
+    # otherwise we add a minimal one.
+    if x509.ExtensionOID.EXTENDED_KEY_USAGE not in added_oids:
+        _add_ext(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+
+    # BasicConstraints: leaf
+    _add_ext(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+    # NEW: KeyUsage (common for TLS server certs)
+    if x509.ExtensionOID.KEY_USAGE not in added_oids:
+        _add_ext(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=True,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+
+    # NEW: Certificate Policies (optional but increases "realism"/fields)
+    if x509.ExtensionOID.CERTIFICATE_POLICIES not in added_oids:
+        _add_ext(
+            x509.CertificatePolicies(
+                [
+                    x509.PolicyInformation(
+                        # Common "Baseline Requirements" DV policy OID used by many public CAs.
+                        policy_identifier=x509.ObjectIdentifier("2.23.140.1.2.1"),
+                        policy_qualifiers=None,
+                    )
+                ]
+            ),
+            critical=False,
+        )
+    # Public key (kept as-is: CA public key) - avoids key management changes.
     builder = builder.public_key(cacert.public_key())
 
-    now = datetime.datetime.now()
+    # Validity
+    now = datetime.datetime.now(datetime.timezone.utc)
     builder = builder.not_valid_before(now - datetime.timedelta(days=2))
     builder = builder.not_valid_after(now + CERT_EXPIRY)
 
+    # Subject
     subject = []
     is_valid_commonname = commonname is not None and len(commonname) < 64
     if is_valid_commonname:
         assert commonname is not None
         subject.append(x509.NameAttribute(NameOID.COMMON_NAME, commonname))
     if organization is not None:
-        assert organization is not None
         subject.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, organization))
     builder = builder.subject_name(x509.Name(subject))
+
     builder = builder.serial_number(x509.random_serial_number())
 
+    # SAN (rebuild, and override any upstream SAN)
     # RFC 5280 §4.2.1.6: subjectAltName is critical if subject is empty.
-    builder = builder.add_extension(
+    _add_ext(
         x509.SubjectAlternativeName(_fix_legacy_sans(sans)),
         critical=not is_valid_commonname,
     )
 
-    # https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.1
-    builder = builder.add_extension(
+    # AKI (must point to our CA)
+    _add_ext(
         x509.AuthorityKeyIdentifier.from_issuer_public_key(cacert.public_key()),
         critical=False,
     )
-    # If CA and leaf cert have the same Subject Key Identifier, SChannel breaks in funny ways,
-    # see https://github.com/mitmproxy/mitmproxy/issues/6494.
-    # https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.2 states
-    # that SKI is optional for the leaf cert, so we skip that.
 
     cert = builder.sign(private_key=privkey, algorithm=hashes.SHA256())  # type: ignore
     return Cert(cert)
@@ -597,6 +659,7 @@ class CertStore:
         commonname: str | None,
         sans: Iterable[x509.GeneralName],
         organization: str | None = None,
+        upstream_cert: x509.Certificate | None = None,   # NEW
     ) -> CertStoreEntry:
         """
         commonname: Common name for the generated certificate. Must be a
@@ -627,6 +690,7 @@ class CertStore:
                     commonname,
                     sans,
                     organization,
+                    upstream_cert=upstream_cert, 
                 ),
                 privatekey=self.default_privatekey,
                 chain_file=self.default_chain_file,

@@ -488,10 +488,12 @@ class TlsConfig:
         """
         altnames: list[x509.GeneralName] = []
         organization: str | None = None
+        upstream_x509: x509.Certificate | None = None   # NEW
 
         # Use upstream certificate if available.
         if ctx.options.upstream_cert and conn_context.server.certificate_list:
             upstream_cert = conn_context.server.certificate_list[0]
+            upstream_x509 = upstream_cert._cert        # NEW: underlying 
             if upstream_cert.cn:
                 altnames.append(_ip_or_dns_name(upstream_cert.cn))
             altnames.extend(upstream_cert.altnames)
@@ -514,7 +516,7 @@ class TlsConfig:
         # RFC 2818: If a subjectAltName extension of type dNSName is present, that MUST be used as the identity.
         # In other words, the Common Name is irrelevant then.
         cn = next((str(x.value) for x in altnames), None)
-        return self.certstore.get_cert(cn, altnames, organization)
+        return self.certstore.get_cert(cn, altnames, organization,upstream_cert=upstream_x509)
 
 
 def _ip_or_dns_name(val: str) -> x509.GeneralName:

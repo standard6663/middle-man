@@ -301,6 +301,7 @@ def dummy_cert(
     organization: Organization name for the generated certificate.
 
     Returns cert if operation succeeded, None if not.
+    这里签发的服务器证书使用二级CA的公私钥，方便密钥管理
     """
     builder = x509.CertificateBuilder()
     builder = builder.issuer_name(cacert.subject)

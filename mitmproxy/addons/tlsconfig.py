@@ -492,7 +492,6 @@ class TlsConfig:
 
         # Use upstream certificate if available.
         if ctx.options.upstream_cert and conn_context.server.certificate_list:
-            print("Using upstream certificate.")
             upstream_cert = conn_context.server.certificate_list[0]
             upstream_x509 = upstream_cert._cert        # NEW: underlying 
             if upstream_cert.cn:

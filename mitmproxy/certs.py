@@ -338,7 +338,37 @@ def dummy_cert(
 
     # BasicConstraints: leaf
     _add_ext(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+    # NEW: KeyUsage (common for TLS server certs)
+    if x509.ExtensionOID.KEY_USAGE not in added_oids:
+        _add_ext(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=True,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
 
+    # NEW: Certificate Policies (optional but increases "realism"/fields)
+    if x509.ExtensionOID.CERTIFICATE_POLICIES not in added_oids:
+        _add_ext(
+            x509.CertificatePolicies(
+                [
+                    x509.PolicyInformation(
+                        # Common "Baseline Requirements" DV policy OID used by many public CAs.
+                        policy_identifier=x509.ObjectIdentifier("2.23.140.1.2.1"),
+                        policy_qualifiers=None,
+                    )
+                ]
+            ),
+            critical=False,
+        )
     # Public key (kept as-is: CA public key) - avoids key management changes.
     builder = builder.public_key(cacert.public_key())
 

@@ -635,7 +635,7 @@ class CertStore:
             self.certs[(commonname, sans)] = entry
             self.expire(entry)
             cert_pem = entry.cert.to_pem()
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BrokenPipeError, OSError):
                 self.pipe.write("cert", {"cert": cert_pem.decode()})
 
         return entry

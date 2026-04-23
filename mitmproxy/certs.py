@@ -458,6 +458,7 @@ class CertStore:
         self.dhparams = dhparams
         self.certs = {}
         self.expire_queue = []
+        # 每次创建新的 PipeWriter
         self.pipe = PipeWriter(ctx.options.pipe_path)
 
     def expire(self, entry: CertStoreEntry) -> None:

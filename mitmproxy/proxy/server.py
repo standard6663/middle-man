@@ -120,7 +120,9 @@ class ConnectionHandler(metaclass=abc.ABCMeta):
         self.max_conns = collections.defaultdict(lambda: asyncio.Semaphore(5))
         self.wakeup_timer = set()
         self.pipe = PipeWriter(context.options.pipe_path)
-        
+        # 共享 PipeWriter 给所有 layers (存在 context 上，避免 deepcopy 问题)
+        context.pipe_writer = self.pipe
+
         # Ask for the first layer right away.
         # In a reverse proxy scenario, this is necessary as we would otherwise hang
         # on protocols that start with a server greeting.

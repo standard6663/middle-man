@@ -1,4 +1,5 @@
 import json
+import os
 import struct
 import subprocess
 from midman.context import Context
@@ -16,6 +17,7 @@ class Manager:
         self.reporter = reporter
         self.cmdman: CommandManager = None
         self.midman_process: subprocess.Popen = None
+        self.stopping = False
 
     def __del__(self):
         self.__stop_midman()
@@ -32,23 +34,37 @@ class Manager:
         command += f' --set confdir={self.ctx.MIDMAN_CONF}'
         command += f' --set pipe_path={self.ctx.PIPE_PATH}'
         command += f' --set listen_port={self.ctx.INTERCEPT_PORT}'
-        # command += f' --rawtcp'  # 转发非HTTP流量
+        # TLS 1.2 套件：2 个选项
         commands = command.split()
+        # 调整 TLS 1.3 套件优先级，让服务端倾向选 AES-128-GCM (0x1302)
+        env = os.environ.copy()
+        env["SSL_CIPHER_LIST"] = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
         with open(self.ctx.MIDMAN_LOG_PATH, "a") as log_file:
             self.midman_process = subprocess.Popen(
                 commands,
                 stdout=None,
-                stderr=subprocess.STDOUT
+                stderr=subprocess.STDOUT,
+                env=env,
             )
         print(f"[INFO] 启动中间人: {command}")
 
-    def __stop_midman(self):
+    def stop(self):
+        """优雅停止中间人进程"""
+        self.stopping = True
+        # 关闭 socket 让阻塞的 recv() 抛出异常退出循环
+        if self.cmdman and self.cmdman.socket:
+            try:
+                self.cmdman.socket.close()
+            except Exception:
+                pass
         if self.midman_process:
             self.midman_process.terminate()
-            self.midman_process.wait()
+            try:
+                self.midman_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self.midman_process.kill()
+                self.midman_process.wait()
             print("[INFO] 中间人已停止")
-        else:
-            print("[ERROR] 中间人进程不存在")
 
     def __send_error_message(self, error_code: int, error_message: str):
         error_data = json.dumps({'code': error_code, 'message': error_message}).encode('utf-8')
@@ -112,8 +128,12 @@ class Manager:
             Command.STOP: self.cmd_stop_handle,
         }
 
-        while True:
-            cmd = self.cmdman.receive()
+        while not self.stopping:
+            try:
+                cmd = self.cmdman.receive()
+            except (OSError, ValueError, ConnectionResetError, BrokenPipeError):
+                # socket 被关闭或连接断开，退出循环
+                break
             handle_func = cmd_handlers.get(cmd.command_code)
             if handle_func:
                 handle_func(cmd)

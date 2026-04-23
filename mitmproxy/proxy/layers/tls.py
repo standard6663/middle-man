@@ -185,7 +185,11 @@ class TLSLayer(tunnel.TunnelLayer):
         )
 
         conn.tls = True
-        self.pipe = PipeWriter(context.options.pipe_path)
+        # 复用 context 中的共享 PipeWriter，避免 fd 泄漏
+        if hasattr(context, 'pipe_writer') and context.pipe_writer:
+            self.pipe = context.pipe_writer
+        else:
+            self.pipe = PipeWriter(context.options.pipe_path)
 
     def __repr__(self):
         return (

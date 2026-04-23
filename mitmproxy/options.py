@@ -239,5 +239,13 @@ class Options(optmanager.OptManager):
             Pipe path for data report.
             """
         )
+        self.add_option(
+            "pipe_writer",
+            object,
+            None,
+            """
+            Shared PipeWriter instance for data reporting.
+            """
+        )
 
         self.update(**kwargs)

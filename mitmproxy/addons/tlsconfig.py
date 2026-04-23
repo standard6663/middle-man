@@ -1,6 +1,7 @@
 import ipaddress
 import logging
 import os
+import ssl
 from pathlib import Path
 from typing import Any
 from typing import Literal
@@ -25,6 +26,21 @@ logger = logging.getLogger(__name__)
 
 # We manually need to specify this, otherwise OpenSSL may select a non-HTTP2 cipher by default.
 # https://ssl-config.mozilla.org/#config=old
+
+# 密码套件轮换计数器
+_cipher_rotate_counter = 0
+
+
+def _tls_ver_to_net(ver: str):
+    """将 'TLSv1.2' 转换为 net_tls.Version.TLS1_2"""
+    _m = {
+        "TLSv1.2": net_tls.Version.TLS1_2,
+        "TLSv1.3": net_tls.Version.TLS1_3,
+        "TLSv1.1": net_tls.Version.TLS1_1,
+        "TLSv1": net_tls.Version.TLS1,
+    }
+    return _m.get(ver, net_tls.Version.UNBOUNDED)
+
 
 _DEFAULT_CIPHERS = (
     "ECDHE-ECDSA-AES128-GCM-SHA256",
@@ -279,6 +295,7 @@ class TlsConfig:
 
         assert isinstance(tls_start.conn, connection.Server)
 
+        global _cipher_rotate_counter
         client: connection.Client = tls_start.context.client
         # tls_start.conn may be different from tls_start.context.server, e.g. an upstream HTTPS proxy.
         server: connection.Server = tls_start.conn
@@ -304,6 +321,20 @@ class TlsConfig:
                 # Mirror "no ALPN" upstream if client did not send ALPN.
                 server.alpn_offers = []
 
+        # 密码套件轮换逻辑：每次连接轮换使用不同套件
+        global _cipher_rotate_counter
+        _cipher_rotate_counter += 1
+        _ciphers_a = "ECDHE-RSA-AES128-GCM-SHA256"
+        _ciphers_b = "ECDHE-RSA-AES256-GCM-SHA384"
+        _ciphers_c = "ECDHE-RSA-CHACHA20-POLY1305"
+        _all_ciphers = (_ciphers_a, _ciphers_b, _ciphers_c)
+        _rotate_cipher = _all_ciphers[_cipher_rotate_counter % 3]
+        # TLS 版本：客户端指定了 TLS 1.2 则用 1.2，否则用 1.3
+        _client_tls_ver = client.tls_version if client and client.tls_version else "TLSv1.3"
+        server.cipher_list = _all_ciphers
+        server.tls_version = _client_tls_ver
+        print(f"[tlsconfig] 连接 #{_cipher_rotate_counter} cipher={_rotate_cipher} 版本={_client_tls_ver}")
+
         if not server.cipher_list and ctx.options.ciphers_server:
             server.cipher_list = ctx.options.ciphers_server.split(":")
         cipher_list = server.cipher_list or _default_ciphers(
@@ -326,7 +357,6 @@ class TlsConfig:
             if tls_start.is_dtls
             else net_tls.Method.TLS_CLIENT_METHOD,
             min_version=net_tls.Version[ctx.options.tls_version_server_min],
-            max_version=net_tls.Version[ctx.options.tls_version_server_max],
             cipher_list=tuple(cipher_list),
             ecdh_curve=ctx.options.tls_ecdh_curve_server,
             verify=verify,
@@ -334,7 +364,9 @@ class TlsConfig:
             ca_pemfile=ctx.options.ssl_verify_upstream_trusted_ca,
             client_cert=client_cert,
             legacy_server_connect=ctx.options.ssl_insecure,
+            max_version=_tls_ver_to_net(server.tls_version) if server.tls_version else net_tls.Version[ctx.options.tls_version_server_max],
         )
+        print(f"[tlsconfig] server={server.address} cipher={cipher_list} max_version={server.tls_version or ctx.options.tls_version_server_max}")
 
         tls_start.ssl_conn = SSL.Connection(ssl_ctx)
         if server.sni:

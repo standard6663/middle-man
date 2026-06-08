@@ -1,0 +1,1 @@
+nuitka --standalone --follow-imports --include-module=mitmproxy_linux  --jobs=32 ./start.py 
